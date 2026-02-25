@@ -1,4 +1,5 @@
-﻿using System;
+﻿// Utilities/AffinityHelper.cs (без изменений)
+using System;
 
 namespace ProcessManager.Utilities
 {
@@ -23,8 +24,7 @@ namespace ProcessManager.Utilities
 
         public static string ToBinaryString(IntPtr mask)
         {
-            return Convert.ToString(mask.ToInt64(), 2)
-                .PadLeft(Environment.ProcessorCount, '0');
+            return Convert.ToString(mask.ToInt64(), 2).PadLeft(Environment.ProcessorCount, '0');
         }
 
         public static string ToHexString(IntPtr mask)

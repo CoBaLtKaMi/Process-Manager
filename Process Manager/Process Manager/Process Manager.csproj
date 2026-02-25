@@ -57,6 +57,7 @@
       <SubType>Designer</SubType>
     </ApplicationDefinition>
     <Compile Include="MainViewModel.cs" />
+    <Compile Include="MemoryToMBConverter.cs" />
     <Compile Include="Services\ProcessService.cs" />
     <Compile Include="Utilities\AffinityHelper.cs" />
     <Page Include="MainWindow.xaml">

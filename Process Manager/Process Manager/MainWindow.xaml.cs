@@ -1,4 +1,4 @@
-﻿// MainWindow.xaml.cs
+﻿// MainWindow.xaml.cs (без изменений, но с DataContext, если нужно)
 using System.Windows;
 
 namespace ProcessManager

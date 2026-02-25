@@ -8,7 +8,7 @@ namespace ProcessManager.Models
         public int Id { get; set; }
         public string Name { get; set; }
         public ProcessPriorityClass Priority { get; set; }
-        public long MemoryUsage { get; set; }
+        public long MemoryUsage { get; set; }      // оставляем long (байты)
         public int ThreadCount { get; set; }
         public TimeSpan CpuTime { get; set; }
         public int? ParentId { get; set; }

@@ -1,6 +1,7 @@
 ﻿using ProcessManager.Models;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Management;
@@ -13,7 +14,6 @@ namespace ProcessManager.Services
         public List<ProcessInfo> GetAllProcesses()
         {
             var processList = new List<ProcessInfo>();
-
             foreach (var p in Process.GetProcesses())
             {
                 try
@@ -30,12 +30,8 @@ namespace ProcessManager.Services
                         ParentId = GetParentProcessId(p.Id)
                     });
                 }
-                catch
-                {
-                    // silently skip processes we cannot access
-                }
+                catch { }
             }
-
             return processList;
         }
 
@@ -43,20 +39,20 @@ namespace ProcessManager.Services
         {
             try
             {
-                Process process = Process.GetProcessById(processId);
-                try
+                using (Process process = Process.GetProcessById(processId))
                 {
                     process.PriorityClass = priority;
                     return true;
                 }
-                finally
-                {
-                    process.Dispose();
-                }
+            }
+            catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
+            {
+                MessageBox.Show("Недостаточно прав для изменения приоритета.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Не удалось изменить приоритет:\n{ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 return false;
             }
         }
@@ -65,20 +61,20 @@ namespace ProcessManager.Services
         {
             try
             {
-                Process process = Process.GetProcessById(processId);
-                try
+                using (Process process = Process.GetProcessById(processId))
                 {
                     process.ProcessorAffinity = affinityMask;
                     return true;
                 }
-                finally
-                {
-                    process.Dispose();
-                }
+            }
+            catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
+            {
+                MessageBox.Show("Недостаточно прав для изменения привязки.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Не удалось изменить привязку к ядрам:\n{ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 return false;
             }
         }
@@ -86,11 +82,9 @@ namespace ProcessManager.Services
         public List<ThreadInfo> GetThreads(int processId)
         {
             var threads = new List<ThreadInfo>();
-
             try
             {
-                Process process = Process.GetProcessById(processId);
-                try
+                using (Process process = Process.GetProcessById(processId))
                 {
                     foreach (ProcessThread t in process.Threads)
                     {
@@ -103,13 +97,8 @@ namespace ProcessManager.Services
                         });
                     }
                 }
-                finally
-                {
-                    process.Dispose();
-                }
             }
             catch { }
-
             return threads;
         }
 
@@ -117,19 +106,14 @@ namespace ProcessManager.Services
         {
             try
             {
-                Process process = Process.GetProcessById(processId);
-                try
+                using (Process process = Process.GetProcessById(processId))
                 {
                     process.Kill();
-                }
-                finally
-                {
-                    process.Dispose();
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Не удалось завершить процесс:\n{ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -137,33 +121,27 @@ namespace ProcessManager.Services
         {
             try
             {
-                ManagementObjectSearcher searcher = new ManagementObjectSearcher(
-                    string.Format("SELECT ParentProcessId FROM Win32_Process WHERE ProcessId = {0}", pid));
-                try
+                using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(
+                    $"SELECT ParentProcessId FROM Win32_Process WHERE ProcessId = {pid}"))
                 {
                     foreach (ManagementObject obj in searcher.Get())
                     {
                         return Convert.ToInt32(obj["ParentProcessId"]);
                     }
                 }
-                finally
-                {
-                    searcher.Dispose();
-                }
             }
             catch { }
-
             return -1;
         }
 
         public List<ProcessInfo> BuildProcessTree(List<ProcessInfo> processes)
         {
-            Dictionary<int, ProcessInfo> dict = processes.ToDictionary(p => p.Id, p => p);
-            List<ProcessInfo> roots = new List<ProcessInfo>();
+            var dict = processes.ToDictionary(p => p.Id, p => p);
+            var roots = new List<ProcessInfo>();
 
             foreach (var p in processes)
             {
-                if (p.ParentId.HasValue && dict.TryGetValue(p.ParentId.Value, out ProcessInfo parent))
+                if (p.ParentId.HasValue && dict.TryGetValue(p.ParentId.Value, out var parent))
                 {
                     if (parent.Children == null)
                     {
@@ -176,7 +154,6 @@ namespace ProcessManager.Services
                     roots.Add(p);
                 }
             }
-
             return roots;
         }
     }

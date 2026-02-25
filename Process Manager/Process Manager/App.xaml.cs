@@ -1,4 +1,4 @@
-﻿// App.xaml.cs
+﻿// App.xaml.cs (без изменений)
 using System.Windows;
 
 namespace ProcessManager

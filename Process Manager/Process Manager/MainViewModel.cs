@@ -16,79 +16,80 @@ namespace ProcessManager.ViewModels
 {
     public class MainViewModel : INotifyPropertyChanged
     {
-        private readonly ProcessService service;
-        private readonly Timer timer;
-        private List<ProcessInfo> allProcesses;
-        private ProcessInfo selectedProcess;
-        private List<ThreadInfo> threads;
-        private string searchText;
-        private bool showGuiOnly;
-        private bool showSystemOnly;
-        private ProcessPriorityClass selectedPriority;
-        private bool[] selectedCores;
-        private string binaryMask;
-        private string hexMask;
+        private readonly ProcessService _service = new ProcessService();
+        private Timer _timer;
+        private List<ProcessInfo> _allProcesses = new List<ProcessInfo>();
+        private ProcessInfo _selectedProcess;
+        private List<ThreadInfo> _threads = new List<ThreadInfo>();
+        private string _searchText = string.Empty;
+        private bool _showGuiOnly;
+        private bool _showSystemOnly;
+        private ProcessPriorityClass _selectedPriority;
+        private bool[] _selectedCores;
+        private string _binaryMask = string.Empty;
+        private string _hexMask = string.Empty;
+        private int _updateIntervalSeconds = 5;
 
-        public ObservableCollection<ProcessInfo> Processes { get; private set; }
-        public ObservableCollection<ProcessInfo> ProcessTree { get; private set; }
+        public ObservableCollection<ProcessInfo> Processes { get; } = new ObservableCollection<ProcessInfo>();
+        public ObservableCollection<ProcessInfo> ProcessTree { get; } = new ObservableCollection<ProcessInfo>();
 
         public ProcessInfo SelectedProcess
         {
-            get => selectedProcess;
+            get { return _selectedProcess; }
             set
             {
-                selectedProcess = value;
+                _selectedProcess = value;
                 if (value != null) UpdateSelectedProcessDetails();
-                OnPropertyChanged();   // ← без параметра, CallerMemberName сам подставит имя
+                OnPropertyChanged();
             }
         }
 
         public ProcessPriorityClass SelectedPriority
         {
-            get => selectedPriority;
+            get { return _selectedPriority; }
             set
             {
-                selectedPriority = value;
+                _selectedPriority = value;
                 OnPropertyChanged();
             }
         }
 
         public bool[] SelectedCores
         {
-            get => selectedCores;
+            get { return _selectedCores; }
             set
             {
-                selectedCores = value;
+                _selectedCores = value;
                 OnPropertyChanged();
             }
         }
 
         public string BinaryMask
         {
-            get => binaryMask;
+            get { return _binaryMask; }
             set
             {
-                binaryMask = value;
+                _binaryMask = value;
                 OnPropertyChanged();
             }
         }
 
         public string HexMask
         {
-            get => hexMask;
+            get { return _hexMask; }
             set
             {
-                hexMask = value;
+                _hexMask = value;
                 OnPropertyChanged();
             }
         }
 
         public string SearchText
         {
-            get => searchText;
+            get { return _searchText; }
             set
             {
-                searchText = value;
+                _searchText = value;
                 FilterAndRefresh();
                 OnPropertyChanged();
             }
@@ -96,10 +97,10 @@ namespace ProcessManager.ViewModels
 
         public bool ShowGuiOnly
         {
-            get => showGuiOnly;
+            get { return _showGuiOnly; }
             set
             {
-                showGuiOnly = value;
+                _showGuiOnly = value;
                 FilterAndRefresh();
                 OnPropertyChanged();
             }
@@ -107,10 +108,10 @@ namespace ProcessManager.ViewModels
 
         public bool ShowSystemOnly
         {
-            get => showSystemOnly;
+            get { return _showSystemOnly; }
             set
             {
-                showSystemOnly = value;
+                _showSystemOnly = value;
                 FilterAndRefresh();
                 OnPropertyChanged();
             }
@@ -118,16 +119,44 @@ namespace ProcessManager.ViewModels
 
         public List<ThreadInfo> Threads
         {
-            get => threads;
+            get { return _threads; }
             set
             {
-                threads = value;
+                _threads = value;
                 OnPropertyChanged();
             }
         }
 
-        public IEnumerable<ProcessPriorityClass> AvailablePriorities =>
-            Enum.GetValues(typeof(ProcessPriorityClass)).Cast<ProcessPriorityClass>();
+        public IEnumerable<ProcessPriorityClass> AvailablePriorities
+        {
+            get
+            {
+                return new ProcessPriorityClass[]
+                {
+                    ProcessPriorityClass.Idle,
+                    ProcessPriorityClass.BelowNormal,
+                    ProcessPriorityClass.Normal,
+                    ProcessPriorityClass.AboveNormal,
+                    ProcessPriorityClass.High,
+                    ProcessPriorityClass.RealTime
+                };
+            }
+        }
+
+        public int UpdateIntervalSeconds
+        {
+            get { return _updateIntervalSeconds; }
+            set
+            {
+                int newValue = value;
+                if (newValue < 1) newValue = 1;
+                if (newValue > 300) newValue = 300;
+
+                _updateIntervalSeconds = newValue;
+                OnPropertyChanged();
+                RestartTimer();
+            }
+        }
 
         public ICommand RefreshCommand { get; private set; }
         public ICommand ChangePriorityCommand { get; private set; }
@@ -138,40 +167,51 @@ namespace ProcessManager.ViewModels
 
         public MainViewModel()
         {
-            service = new ProcessService();
-            allProcesses = new List<ProcessInfo>();
-            threads = new List<ThreadInfo>();
-            searchText = string.Empty;
-            binaryMask = string.Empty;
-            hexMask = string.Empty;
-            selectedCores = new bool[Environment.ProcessorCount];
-            Processes = new ObservableCollection<ProcessInfo>();
-            ProcessTree = new ObservableCollection<ProcessInfo>();
+            _selectedCores = new bool[Environment.ProcessorCount];
 
-            RefreshCommand = new RelayCommand(obj => LoadProcesses());
-            ChangePriorityCommand = new RelayCommand(obj => ChangeProcessPriority());
-            ChangeAffinityCommand = new RelayCommand(obj => ApplyAffinity());
-            KillCommand = new RelayCommand(obj => KillSelected());
-            SortByNameCommand = new RelayCommand(obj => SortProcessesBy(p => p.Name));
-            SortByCpuCommand = new RelayCommand(obj => SortProcessesBy(p => p.CpuTime, true));
+            RefreshCommand = new RelayCommand(o => LoadProcesses());
+            ChangePriorityCommand = new RelayCommand(o => ChangeProcessPriority());
+            ChangeAffinityCommand = new RelayCommand(o => ApplyAffinity());
+            KillCommand = new RelayCommand(o => KillSelected());
+            SortByNameCommand = new RelayCommand(o => SortProcessesBy(p => p.Name));
+            SortByCpuCommand = new RelayCommand(o => SortProcessesBy(p => p.CpuTime, true));
 
-            timer = new Timer(5000);
-            timer.Elapsed += (s, e) => Application.Current?.Dispatcher.Invoke(LoadProcesses);
-            timer.Start();
-
+            RestartTimer();
             LoadProcesses();
+        }
+
+        private void RestartTimer()
+        {
+            if (_timer != null)
+            {
+                _timer.Stop();
+                _timer.Dispose();
+            }
+
+            _timer = new Timer(UpdateIntervalSeconds * 1000);
+            _timer.Elapsed += Timer_Elapsed;
+            _timer.AutoReset = true;
+            _timer.Start();
+        }
+
+        private void Timer_Elapsed(object sender, ElapsedEventArgs e)
+        {
+            if (Application.Current != null)
+            {
+                Application.Current.Dispatcher.Invoke(LoadProcesses);
+            }
         }
 
         private void LoadProcesses()
         {
-            allProcesses = service.GetAllProcesses();
+            _allProcesses = _service.GetAllProcesses();
             FilterAndRefresh();
             UpdateTree();
         }
 
         private void FilterAndRefresh()
         {
-            var query = allProcesses.AsQueryable();
+            var query = _allProcesses.AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(SearchText))
             {
@@ -179,14 +219,20 @@ namespace ProcessManager.ViewModels
             }
 
             if (ShowGuiOnly)
+            {
                 query = query.Where(p => HasMainWindow(p.Id));
+            }
 
             if (ShowSystemOnly)
+            {
                 query = query.Where(p => IsSystemProcess(p.Id));
+            }
 
             Processes.Clear();
             foreach (var p in query)
+            {
                 Processes.Add(p);
+            }
         }
 
         private static bool HasMainWindow(int pid)
@@ -210,7 +256,16 @@ namespace ProcessManager.ViewModels
             {
                 using (Process p = Process.GetProcessById(pid))
                 {
-                    return p.SessionId == 0;
+                    string name = p.ProcessName.ToLowerInvariant();
+                    return name == "system" ||
+                           name == "smss" ||
+                           name == "csrss" ||
+                           name == "wininit" ||
+                           name == "services" ||
+                           name == "lsass" ||
+                           name == "svchost" ||
+                           name.StartsWith("winlogon") ||
+                           name == "explorer";
                 }
             }
             catch
@@ -221,13 +276,21 @@ namespace ProcessManager.ViewModels
 
         private void SortProcessesBy<T>(Func<ProcessInfo, T> selector, bool descending = false)
         {
-            var sorted = descending
-                ? Processes.OrderByDescending(selector).ToList()
-                : Processes.OrderBy(selector).ToList();
+            List<ProcessInfo> sorted;
+            if (descending)
+            {
+                sorted = Processes.OrderByDescending(selector).ToList();
+            }
+            else
+            {
+                sorted = Processes.OrderBy(selector).ToList();
+            }
 
             Processes.Clear();
             foreach (var item in sorted)
+            {
                 Processes.Add(item);
+            }
         }
 
         private void UpdateSelectedProcessDetails()
@@ -235,15 +298,17 @@ namespace ProcessManager.ViewModels
             if (SelectedProcess == null) return;
 
             SelectedPriority = SelectedProcess.Priority;
-            Threads = service.GetThreads(SelectedProcess.Id);
+            Threads = _service.GetThreads(SelectedProcess.Id);
 
             BinaryMask = AffinityHelper.ToBinaryString(SelectedProcess.AffinityMask);
             HexMask = AffinityHelper.ToHexString(SelectedProcess.AffinityMask);
 
-            for (int i = 0; i < selectedCores.Length; i++)
-                selectedCores[i] = AffinityHelper.IsCoreEnabled(SelectedProcess.AffinityMask, i);
+            for (int i = 0; i < SelectedCores.Length; i++)
+            {
+                SelectedCores[i] = AffinityHelper.IsCoreEnabled(SelectedProcess.AffinityMask, i);
+            }
 
-            OnPropertyChanged(nameof(SelectedCores));
+            OnPropertyChanged("SelectedCores");
         }
 
         private void ChangeProcessPriority()
@@ -252,20 +317,19 @@ namespace ProcessManager.ViewModels
 
             if (SelectedPriority == ProcessPriorityClass.RealTime)
             {
-                var result = MessageBox.Show(
-                    "Установка приоритета RealTime может привести к нестабильности системы.\nПродолжить?",
-                    "Предупреждение",
+                MessageBoxResult result = MessageBox.Show(
+                    "Приоритет Realtime может нарушить работу системы. Продолжить?",
+                    "Внимание!",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Warning);
 
-                if (result != MessageBoxResult.Yes)
-                    return;
+                if (result != MessageBoxResult.Yes) return;
             }
 
-            if (service.SetProcessPriority(SelectedProcess.Id, SelectedPriority))
+            if (_service.SetProcessPriority(SelectedProcess.Id, SelectedPriority))
             {
                 SelectedProcess.Priority = SelectedPriority;
-                OnPropertyChanged(nameof(SelectedProcess));
+                OnPropertyChanged("SelectedProcess");
             }
         }
 
@@ -273,9 +337,9 @@ namespace ProcessManager.ViewModels
         {
             if (SelectedProcess == null) return;
 
-            var newMask = AffinityHelper.SetCoreMask(selectedCores);
+            IntPtr newMask = AffinityHelper.SetCoreMask(SelectedCores);
 
-            if (service.SetProcessAffinity(SelectedProcess.Id, newMask))
+            if (_service.SetProcessAffinity(SelectedProcess.Id, newMask))
             {
                 SelectedProcess.AffinityMask = newMask;
                 BinaryMask = AffinityHelper.ToBinaryString(newMask);
@@ -287,51 +351,59 @@ namespace ProcessManager.ViewModels
         {
             if (SelectedProcess == null) return;
 
-            var result = MessageBox.Show(
-                $"Завершить процесс «{SelectedProcess.Name}» (PID: {SelectedProcess.Id})?",
+            MessageBoxResult result = MessageBox.Show(
+                string.Format("Завершить процесс «{0}» (PID: {1})?", SelectedProcess.Name, SelectedProcess.Id),
                 "Подтверждение",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
 
             if (result == MessageBoxResult.Yes)
             {
-                service.KillProcess(SelectedProcess.Id);
+                _service.KillProcess(SelectedProcess.Id);
                 LoadProcesses();
             }
         }
 
         private void UpdateTree()
         {
-            var roots = service.BuildProcessTree(allProcesses);
-
+            List<ProcessInfo> roots = _service.BuildProcessTree(_allProcesses);
             ProcessTree.Clear();
-            foreach (var root in roots)
+            foreach (ProcessInfo root in roots)
+            {
                 ProcessTree.Add(root);
+            }
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
 
-        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        protected virtual void OnPropertyChanged(string propertyName = null)
         {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            if (PropertyChanged != null)
+            {
+                PropertyChanged(this, new PropertyChangedEventArgs(propertyName));
+            }
         }
     }
 
     public class RelayCommand : ICommand
     {
-        private readonly Action<object> execute;
+        private readonly Action<object> _execute;
 
         public RelayCommand(Action<object> execute)
         {
-            this.execute = execute;
+            _execute = execute;
         }
 
-#pragma warning disable CS0067
         public event EventHandler CanExecuteChanged;
-#pragma warning restore CS0067
 
-        public bool CanExecute(object parameter) => true;
+        public bool CanExecute(object parameter)
+        {
+            return true;
+        }
 
-        public void Execute(object parameter) => execute(parameter);
+        public void Execute(object parameter)
+        {
+            _execute(parameter);
+        }
     }
 }
