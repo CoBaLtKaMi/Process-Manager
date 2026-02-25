@@ -1,12 +1,13 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Diagnostics;
 
-namespace Process_Manager.Models
+namespace ProcessManager.Models
 {
-    internal class ThreadInfo
+    public class ThreadInfo
     {
+        public int Id { get; set; }
+        public ThreadPriorityLevel Priority { get; set; }
+        public ThreadState State { get; set; }
+        public TimeSpan CpuTime { get; set; }
     }
 }
