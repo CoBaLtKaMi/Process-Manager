@@ -11,6 +11,8 @@ using System.Windows.Input;
 using ProcessManager.Models;
 using ProcessManager.Services;
 using ProcessManager.Utilities;
+using LiveCharts;
+using LiveCharts.Wpf;
 
 namespace ProcessManager.ViewModels
 {
@@ -18,6 +20,7 @@ namespace ProcessManager.ViewModels
     {
         private readonly ProcessService _service = new ProcessService();
         private Timer _timer;
+        private Timer _visualTimer;
         private List<ProcessInfo> _allProcesses = new List<ProcessInfo>();
         private ProcessInfo _selectedProcess;
         private List<ThreadInfo> _threads = new List<ThreadInfo>();
@@ -30,12 +33,17 @@ namespace ProcessManager.ViewModels
         private string _hexMask = string.Empty;
         private int _updateIntervalSeconds = 5;
 
+        // Графики
+        public SeriesCollection CpuSeries { get; private set; }
+        public SeriesCollection MemoryPieSeries { get; private set; }
+        private PerformanceCounter[] _cpuCounters;
+
         public ObservableCollection<ProcessInfo> Processes { get; } = new ObservableCollection<ProcessInfo>();
         public ObservableCollection<ProcessInfo> ProcessTree { get; } = new ObservableCollection<ProcessInfo>();
 
         public ProcessInfo SelectedProcess
         {
-            get { return _selectedProcess; }
+            get => _selectedProcess;
             set
             {
                 _selectedProcess = value;
@@ -46,7 +54,7 @@ namespace ProcessManager.ViewModels
 
         public ProcessPriorityClass SelectedPriority
         {
-            get { return _selectedPriority; }
+            get => _selectedPriority;
             set
             {
                 _selectedPriority = value;
@@ -56,7 +64,7 @@ namespace ProcessManager.ViewModels
 
         public bool[] SelectedCores
         {
-            get { return _selectedCores; }
+            get => _selectedCores;
             set
             {
                 _selectedCores = value;
@@ -66,7 +74,7 @@ namespace ProcessManager.ViewModels
 
         public string BinaryMask
         {
-            get { return _binaryMask; }
+            get => _binaryMask;
             set
             {
                 _binaryMask = value;
@@ -76,7 +84,7 @@ namespace ProcessManager.ViewModels
 
         public string HexMask
         {
-            get { return _hexMask; }
+            get => _hexMask;
             set
             {
                 _hexMask = value;
@@ -86,7 +94,7 @@ namespace ProcessManager.ViewModels
 
         public string SearchText
         {
-            get { return _searchText; }
+            get => _searchText;
             set
             {
                 _searchText = value;
@@ -97,7 +105,7 @@ namespace ProcessManager.ViewModels
 
         public bool ShowGuiOnly
         {
-            get { return _showGuiOnly; }
+            get => _showGuiOnly;
             set
             {
                 _showGuiOnly = value;
@@ -108,7 +116,7 @@ namespace ProcessManager.ViewModels
 
         public bool ShowSystemOnly
         {
-            get { return _showSystemOnly; }
+            get => _showSystemOnly;
             set
             {
                 _showSystemOnly = value;
@@ -119,7 +127,7 @@ namespace ProcessManager.ViewModels
 
         public List<ThreadInfo> Threads
         {
-            get { return _threads; }
+            get => _threads;
             set
             {
                 _threads = value;
@@ -127,25 +135,19 @@ namespace ProcessManager.ViewModels
             }
         }
 
-        public IEnumerable<ProcessPriorityClass> AvailablePriorities
+        public IEnumerable<ProcessPriorityClass> AvailablePriorities { get; } = new[]
         {
-            get
-            {
-                return new ProcessPriorityClass[]
-                {
-                    ProcessPriorityClass.Idle,
-                    ProcessPriorityClass.BelowNormal,
-                    ProcessPriorityClass.Normal,
-                    ProcessPriorityClass.AboveNormal,
-                    ProcessPriorityClass.High,
-                    ProcessPriorityClass.RealTime
-                };
-            }
-        }
+            ProcessPriorityClass.Idle,
+            ProcessPriorityClass.BelowNormal,
+            ProcessPriorityClass.Normal,
+            ProcessPriorityClass.AboveNormal,
+            ProcessPriorityClass.High,
+            ProcessPriorityClass.RealTime
+        };
 
         public int UpdateIntervalSeconds
         {
-            get { return _updateIntervalSeconds; }
+            get => _updateIntervalSeconds;
             set
             {
                 int newValue = value;
@@ -176,8 +178,111 @@ namespace ProcessManager.ViewModels
             SortByNameCommand = new RelayCommand(o => SortProcessesBy(p => p.Name));
             SortByCpuCommand = new RelayCommand(o => SortProcessesBy(p => p.CpuTime, true));
 
+            InitCharts();
+            WarmUpCpuCounters();
+
             RestartTimer();
             LoadProcesses();
+        }
+
+        private void InitCharts()
+        {
+            CpuSeries = new SeriesCollection();
+            MemoryPieSeries = new SeriesCollection();
+
+            _cpuCounters = new PerformanceCounter[Environment.ProcessorCount];
+            for (int i = 0; i < Environment.ProcessorCount; i++)
+            {
+                var counter = new PerformanceCounter("Processor", "% Processor Time", i.ToString());
+                _cpuCounters[i] = counter;
+
+                CpuSeries.Add(new ColumnSeries
+                {
+                    Title = $"Ядро {i + 1}",
+                    Values = new ChartValues<double> { 0 },
+                    MaxColumnWidth = 50,
+                    ColumnPadding = 5,
+                    Fill = new System.Windows.Media.SolidColorBrush(
+                        System.Windows.Media.Color.FromRgb((byte)(80 + i * 40), (byte)(140 - i * 10), (byte)(220 - i * 20)))
+                });
+            }
+
+            _visualTimer = new Timer(2000);
+            _visualTimer.Elapsed += (s, e) => Application.Current?.Dispatcher.Invoke(UpdateCharts);
+            _visualTimer.AutoReset = true;
+            _visualTimer.Start();
+        }
+
+        private void WarmUpCpuCounters()
+        {
+            // Первый прогрев — два вызова на каждый счётчик
+            for (int j = 0; j < 2; j++)
+            {
+                for (int i = 0; i < _cpuCounters.Length; i++)
+                {
+                    _cpuCounters[i].NextValue();
+                }
+                System.Threading.Thread.Sleep(500); // пауза 0.5 сек между вызовами
+            }
+
+            // Теперь уже можно обновлять график
+            UpdateCpuChart();
+        }
+
+        private void UpdateCharts()
+        {
+            UpdateCpuChart();
+            UpdateMemoryPieChart();
+        }
+
+        private void UpdateCpuChart()
+        {
+            for (int i = 0; i < _cpuCounters.Length; i++)
+            {
+                double value = _cpuCounters[i].NextValue();
+                value = Math.Max(0, Math.Min(100, value)); // жёстко ограничиваем 0–100
+                ((ColumnSeries)CpuSeries[i]).Values[0] = value;
+            }
+        }
+
+        private void UpdateMemoryPieChart()
+        {
+            if (_allProcesses == null || _allProcesses.Count == 0) return;
+
+            var top10 = _allProcesses
+                .OrderByDescending(p => p.MemoryUsage)
+                .Take(10)
+                .ToList();
+
+            // Обновляем существующие серии (без полной очистки)
+            for (int i = 0; i < MemoryPieSeries.Count; i++)
+            {
+                if (i < top10.Count)
+                {
+                    var series = (PieSeries)MemoryPieSeries[i];
+                    double mb = Math.Round(top10[i].MemoryUsage / 1024.0 / 1024.0, 1);
+                    series.Values[0] = mb;
+                    series.Title = $"{top10[i].Name} ({mb:N1} МБ)";
+                }
+                else
+                {
+                    // Удаляем лишние серии
+                    MemoryPieSeries.RemoveAt(MemoryPieSeries.Count - 1);
+                    i--;
+                }
+            }
+
+            // Добавляем новые серии, если топ-10 вырос
+            for (int i = MemoryPieSeries.Count; i < top10.Count; i++)
+            {
+                double mb = Math.Round(top10[i].MemoryUsage / 1024.0 / 1024.0, 1);
+                MemoryPieSeries.Add(new PieSeries
+                {
+                    Title = $"{top10[i].Name} ({mb:N1} МБ)",
+                    Values = new ChartValues<double> { mb },
+                    DataLabels = true
+                });
+            }
         }
 
         private void RestartTimer()
@@ -257,6 +362,8 @@ namespace ProcessManager.ViewModels
                 using (Process p = Process.GetProcessById(pid))
                 {
                     string name = p.ProcessName.ToLowerInvariant();
+                    if (pid == 0) return false;
+
                     return name == "system" ||
                            name == "smss" ||
                            name == "csrss" ||
@@ -276,15 +383,9 @@ namespace ProcessManager.ViewModels
 
         private void SortProcessesBy<T>(Func<ProcessInfo, T> selector, bool descending = false)
         {
-            List<ProcessInfo> sorted;
-            if (descending)
-            {
-                sorted = Processes.OrderByDescending(selector).ToList();
-            }
-            else
-            {
-                sorted = Processes.OrderBy(selector).ToList();
-            }
+            var sorted = descending
+                ? Processes.OrderByDescending(selector).ToList()
+                : Processes.OrderBy(selector).ToList();
 
             Processes.Clear();
             foreach (var item in sorted)
@@ -308,7 +409,7 @@ namespace ProcessManager.ViewModels
                 SelectedCores[i] = AffinityHelper.IsCoreEnabled(SelectedProcess.AffinityMask, i);
             }
 
-            OnPropertyChanged("SelectedCores");
+            OnPropertyChanged(nameof(SelectedCores));
         }
 
         private void ChangeProcessPriority()
@@ -317,7 +418,7 @@ namespace ProcessManager.ViewModels
 
             if (SelectedPriority == ProcessPriorityClass.RealTime)
             {
-                MessageBoxResult result = MessageBox.Show(
+                var result = MessageBox.Show(
                     "Приоритет Realtime может нарушить работу системы. Продолжить?",
                     "Внимание!",
                     MessageBoxButton.YesNo,
@@ -329,7 +430,7 @@ namespace ProcessManager.ViewModels
             if (_service.SetProcessPriority(SelectedProcess.Id, SelectedPriority))
             {
                 SelectedProcess.Priority = SelectedPriority;
-                OnPropertyChanged("SelectedProcess");
+                OnPropertyChanged(nameof(SelectedProcess));
             }
         }
 
@@ -337,7 +438,7 @@ namespace ProcessManager.ViewModels
         {
             if (SelectedProcess == null) return;
 
-            IntPtr newMask = AffinityHelper.SetCoreMask(SelectedCores);
+            var newMask = AffinityHelper.SetCoreMask(SelectedCores);
 
             if (_service.SetProcessAffinity(SelectedProcess.Id, newMask))
             {
@@ -351,8 +452,8 @@ namespace ProcessManager.ViewModels
         {
             if (SelectedProcess == null) return;
 
-            MessageBoxResult result = MessageBox.Show(
-                string.Format("Завершить процесс «{0}» (PID: {1})?", SelectedProcess.Name, SelectedProcess.Id),
+            var result = MessageBox.Show(
+                $"Завершить процесс «{SelectedProcess.Name}» (PID: {SelectedProcess.Id})?",
                 "Подтверждение",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
@@ -366,9 +467,9 @@ namespace ProcessManager.ViewModels
 
         private void UpdateTree()
         {
-            List<ProcessInfo> roots = _service.BuildProcessTree(_allProcesses);
+            var roots = _service.BuildProcessTree(_allProcesses);
             ProcessTree.Clear();
-            foreach (ProcessInfo root in roots)
+            foreach (var root in roots)
             {
                 ProcessTree.Add(root);
             }
@@ -376,12 +477,9 @@ namespace ProcessManager.ViewModels
 
         public event PropertyChangedEventHandler PropertyChanged;
 
-        protected virtual void OnPropertyChanged(string propertyName = null)
+        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
         {
-            if (PropertyChanged != null)
-            {
-                PropertyChanged(this, new PropertyChangedEventArgs(propertyName));
-            }
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
     }
 
@@ -396,14 +494,8 @@ namespace ProcessManager.ViewModels
 
         public event EventHandler CanExecuteChanged;
 
-        public bool CanExecute(object parameter)
-        {
-            return true;
-        }
+        public bool CanExecute(object parameter) => true;
 
-        public void Execute(object parameter)
-        {
-            _execute(parameter);
-        }
+        public void Execute(object parameter) => _execute(parameter);
     }
 }

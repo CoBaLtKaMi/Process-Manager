@@ -3,14 +3,31 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:ProcessManager"
         xmlns:vm="clr-namespace:ProcessManager.ViewModels"
+        xmlns:lvc="clr-namespace:LiveCharts.Wpf;assembly=LiveCharts.Wpf"
         xmlns:conv="clr-namespace:ProcessManager.Converters"
         mc:Ignorable="d"
-        Title="Диспетчер процессов" Height="650" Width="1100">
+        Title="Диспетчер процессов" Height="720" Width="1180">
 
     <Window.Resources>
         <conv:MemoryToMBConverter x:Key="MemoryToMB"/>
+
+        <!-- Цветовое выделение строк -->
+        <Style TargetType="DataGridRow">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Priority}" Value="RealTime">
+                    <Setter Property="Background" Value="#FFCDD2"/>
+                    <Setter Property="Foreground" Value="#C62828"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Priority}" Value="High">
+                    <Setter Property="Background" Value="#FFE0B2"/>
+                    <Setter Property="Foreground" Value="#EF6C00"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Priority}" Value="AboveNormal">
+                    <Setter Property="Background" Value="#FFF9C4"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <Window.DataContext>
@@ -26,28 +43,13 @@
 
         <!-- Верхняя панель -->
         <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="10">
-            <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" 
-                     Width="220" Margin="0,0,10,0" VerticalAlignment="Center"/>
-
-            <CheckBox Content="Только с GUI" IsChecked="{Binding ShowGuiOnly}" 
-                      Margin="0,0,15,0" VerticalAlignment="Center"/>
-            <CheckBox Content="Только системные" IsChecked="{Binding ShowSystemOnly}" 
-                      Margin="0,0,20,0" VerticalAlignment="Center"/>
-
-            <Button Content="Обновить" Command="{Binding RefreshCommand}" 
-                    Margin="0,0,20,0" Padding="8,4"/>
-
-            <!-- Убрана кнопка "Сорт. по имени" -->
-            <Button Content="Сорт. по CPU" Command="{Binding SortByCpuCommand}" 
-                    Margin="0,0,20,0" Padding="8,4"/>
-
-            <TextBlock Text="Обновление каждые:" 
-                       VerticalAlignment="Center" Margin="0,0,8,0"/>
-
-            <ComboBox SelectedValue="{Binding UpdateIntervalSeconds}"
-                      Width="110"
-                      SelectedValuePath="Tag"
-                      Margin="0,0,10,0">
+            <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Width="220" Margin="0,0,10,0"/>
+            <CheckBox Content="Только с GUI" IsChecked="{Binding ShowGuiOnly}" Margin="0,0,15,0"/>
+            <CheckBox Content="Только системные" IsChecked="{Binding ShowSystemOnly}" Margin="0,0,20,0"/>
+            <Button Content="Обновить" Command="{Binding RefreshCommand}" Margin="0,0,20,0" Padding="8,4"/>
+            <Button Content="Сорт. по CPU" Command="{Binding SortByCpuCommand}" Margin="0,0,20,0" Padding="8,4"/>
+            <TextBlock Text="Обновление каждые:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <ComboBox SelectedValue="{Binding UpdateIntervalSeconds}" Width="110" SelectedValuePath="Tag">
                 <ComboBoxItem Tag="1">1 сек</ComboBoxItem>
                 <ComboBoxItem Tag="3">3 сек</ComboBoxItem>
                 <ComboBoxItem Tag="5">5 сек</ComboBoxItem>
@@ -60,20 +62,17 @@
         <!-- Вкладки -->
         <TabControl Grid.Row="1" Margin="10">
             <TabItem Header="Список процессов">
-                <DataGrid ItemsSource="{Binding Processes}" 
-                          AutoGenerateColumns="False" 
-                          SelectedItem="{Binding SelectedProcess}"
-                          IsReadOnly="True"
-                          CanUserSortColumns="True">
+                <DataGrid ItemsSource="{Binding Processes}" AutoGenerateColumns="False" 
+                          SelectedItem="{Binding SelectedProcess}" IsReadOnly="True" CanUserSortColumns="True">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="PID"     Binding="{Binding Id}"        Width="80"/>
-                        <DataGridTextColumn Header="Имя"     Binding="{Binding Name}"      Width="*" CanUserSort="True"/>
+                        <DataGridTextColumn Header="PID" Binding="{Binding Id}" Width="80"/>
+                        <DataGridTextColumn Header="Имя" Binding="{Binding Name}" Width="*" CanUserSort="True"/>
                         <DataGridTextColumn Header="Приоритет" Binding="{Binding Priority}" Width="120"/>
                         <DataGridTextColumn Header="Память (МБ)" 
                                             Binding="{Binding MemoryUsage, Converter={StaticResource MemoryToMB}, StringFormat={}{0:N1}}" 
                                             Width="110"/>
-                        <DataGridTextColumn Header="CPU время" Binding="{Binding CpuTime}"   Width="110"/>
-                        <DataGridTextColumn Header="Потоки"   Binding="{Binding ThreadCount}" Width="70"/>
+                        <DataGridTextColumn Header="CPU время" Binding="{Binding CpuTime}" Width="110"/>
+                        <DataGridTextColumn Header="Потоки" Binding="{Binding ThreadCount}" Width="70"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </TabItem>
@@ -91,27 +90,43 @@
             <TabItem Header="Потоки">
                 <DataGrid ItemsSource="{Binding Threads}" AutoGenerateColumns="False">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="TID"         Binding="{Binding Id}"        Width="80"/>
-                        <DataGridTextColumn Header="Приоритет"   Binding="{Binding Priority}" Width="120"/>
-                        <DataGridTextColumn Header="Состояние"   Binding="{Binding State}"    Width="140"/>
-                        <DataGridTextColumn Header="CPU время"   Binding="{Binding CpuTime}"  Width="110"/>
+                        <DataGridTextColumn Header="TID" Binding="{Binding Id}" Width="80"/>
+                        <DataGridTextColumn Header="Приоритет" Binding="{Binding Priority}" Width="120"/>
+                        <DataGridTextColumn Header="Состояние" Binding="{Binding State}" Width="140"/>
+                        <DataGridTextColumn Header="CPU время" Binding="{Binding CpuTime}" Width="110"/>
                     </DataGrid.Columns>
                 </DataGrid>
+            </TabItem>
+
+            <TabItem Header="Визуализация">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Столбиковый график CPU -->
+                    <GroupBox Header="Загрузка процессора по ядрам (%)" Grid.Column="0" Margin="5">
+                        <lvc:CartesianChart Series="{Binding CpuSeries}" LegendLocation="Right">
+                            <lvc:CartesianChart.AxisY>
+                                <lvc:Axis Title="%" MinValue="0" MaxValue="100"/>
+                            </lvc:CartesianChart.AxisY>
+                        </lvc:CartesianChart>
+                    </GroupBox>
+
+                    <!-- Круговая диаграмма памяти -->
+                    <GroupBox Header="Топ-10 процессов по памяти (МБ)" Grid.Column="1" Margin="5">
+                        <lvc:PieChart Series="{Binding MemoryPieSeries}" LegendLocation="Right"/>
+                    </GroupBox>
+                </Grid>
             </TabItem>
         </TabControl>
 
         <!-- Нижняя панель -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="10">
-            <ComboBox ItemsSource="{Binding AvailablePriorities}" 
-                      SelectedItem="{Binding SelectedPriority}" 
-                      Width="160" Margin="0,0,10,0"/>
-
-            <Button Content="Изменить приоритет" 
-                    Command="{Binding ChangePriorityCommand}" 
-                    Margin="0,0,20,0" Padding="10,6"/>
-
+            <ComboBox ItemsSource="{Binding AvailablePriorities}" SelectedItem="{Binding SelectedPriority}" Width="160" Margin="0,0,10,0"/>
+            <Button Content="Изменить приоритет" Command="{Binding ChangePriorityCommand}" Margin="0,0,20,0" Padding="10,6"/>
             <TextBlock Text="Ядра:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-
             <ItemsControl ItemsSource="{Binding SelectedCores}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -120,24 +135,14 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <CheckBox IsChecked="{Binding Path=., Mode=TwoWay}" 
-                                  Margin="0,0,6,0"/>
+                        <CheckBox IsChecked="{Binding Path=., Mode=TwoWay}" Margin="0,0,6,0"/>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
-
-            <TextBlock Text="{Binding BinaryMask}" 
-                       Margin="20,0,10,0" VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding HexMask}"   
-                       Margin="0,0,20,0" VerticalAlignment="Center"/>
-
-            <Button Content="Применить Affinity" 
-                    Command="{Binding ChangeAffinityCommand}" 
-                    Margin="0,0,20,0" Padding="10,6"/>
-
-            <Button Content="Завершить процесс" 
-                    Command="{Binding KillCommand}" 
-                    Background="#C62828" Foreground="White" Padding="10,6"/>
+            <TextBlock Text="{Binding BinaryMask}" Margin="20,0,10,0" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding HexMask}" Margin="0,0,20,0" VerticalAlignment="Center"/>
+            <Button Content="Применить Affinity" Command="{Binding ChangeAffinityCommand}" Margin="0,0,20,0" Padding="10,6"/>
+            <Button Content="Завершить процесс" Command="{Binding KillCommand}" Background="#C62828" Foreground="White" Padding="10,6"/>
         </StackPanel>
     </Grid>
 </Window>

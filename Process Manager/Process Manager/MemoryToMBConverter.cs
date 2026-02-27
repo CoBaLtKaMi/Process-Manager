@@ -10,12 +10,10 @@ namespace ProcessManager.Converters
         {
             if (value is long bytes)
             {
-                // Делим байты на 1024² = 1 МБ
-                double megabytes = bytes / 1024.0 / 1024.0;
-                return Math.Round(megabytes, 1); // 1 знак после запятой
+                double mb = bytes / 1024.0 / 1024.0;
+                return Math.Round(mb, 1); // 1 знак после запятой
             }
-
-            return value;
+            return value ?? 0;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
