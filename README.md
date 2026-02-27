@@ -162,11 +162,6 @@ catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
 
 ---
 
-## 📄 Лицензия
-
-MIT — см. [LICENSE](LICENSE)
-
----
 
 > Разработал: **Морозов А.Н.**, группа Б.ИВТ.ПРОМ.23.01  
 > GitHub: [@CoBaLtKaMi](https://github.com/CoBaLtKaMi)
