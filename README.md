@@ -84,54 +84,7 @@ System.Management
 
 ## 🔧 Ключевые детали реализации
 
-### Получение списка процессов
 
-```csharp
-foreach (var p in Process.GetProcesses())
-{
-    try
-    {
-        processList.Add(new ProcessInfo
-        {
-            Id = p.Id,
-            Name = p.ProcessName,
-            Priority = p.PriorityClass,
-            MemoryUsage = p.WorkingSet64,
-            ThreadCount = p.Threads.Count,
-            CpuTime = p.TotalProcessorTime,
-            AffinityMask = p.ProcessorAffinity,
-            ParentId = GetParentProcessId(p.Id)  // через WMI
-        });
-    }
-    catch { /* системные процессы без доступа пропускаются */ }
-}
-```
-
-### CPU Affinity через битовую маску
-
-```csharp
-// Проверить, включено ли ядро
-bool enabled = (mask.ToInt64() & (1L << coreIndex)) != 0;
-
-// Собрать маску из чекбоксов
-long mask = 0;
-for (int i = 0; i < cores.Length; i++)
-    if (cores[i]) mask |= 1L << i;
-process.ProcessorAffinity = new IntPtr(mask);
-```
-
-### Построение дерева процессов
-
-```csharp
-var dict = processes.ToDictionary(p => p.Id);
-foreach (var p in processes)
-{
-    if (p.ParentId.HasValue && dict.TryGetValue(p.ParentId.Value, out var parent))
-        parent.Children = parent.Children.Append(p).ToArray();
-    else
-        roots.Add(p);
-}
-```
 
 ---
 
@@ -146,16 +99,6 @@ foreach (var p in processes)
 
 ---
 
-## ⚠️ Обработка ошибок
-
-Все операции с системными процессами оборачиваются в `try-catch`. Ошибка доступа (`Win32Exception`, код `5`) обрабатывается отдельно с понятным сообщением:
-
-```csharp
-catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
-{
-    MessageBox.Show("Недостаточно прав для изменения приоритета.");
-}
-```
 
 Перед установкой приоритета **RealTime** всегда выводится диалог подтверждения, так как этот уровень может нарушить стабильность системы.
 
